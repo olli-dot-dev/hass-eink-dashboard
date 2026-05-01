@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+import io
+from datetime import timedelta
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from PIL import Image
+
+from custom_components.eink_dashboard.const import DEFAULT_UPDATE_INTERVAL
+from custom_components.eink_dashboard.image import (
+    EinkDashboardImage,
+)
+
+
+def _make_entry(
+    options: dict[str, Any] | None = None,
+) -> MagicMock:
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id"
+    entry.title = "Test Dashboard"
+    entry.options = options or {
+        "width": 200,
+        "height": 100,
+    }
+    return entry
+
+
+def _make_hass() -> MagicMock:
+    hass = MagicMock()
+    hass.states.async_all.return_value = []
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a: fn(*a))
+    return hass
+
+
+def _png_from_bytes(data: bytes) -> Image.Image:
+    return Image.open(io.BytesIO(data))
+
+
+class TestEinkDashboardImage:
+    def test_attributes_set_from_entry(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+
+        assert entity._attr_name == "Test Dashboard"
+        assert entity._attr_unique_id == "test_entry_id"
+        assert entity._attr_content_type == "image/png"
+
+    async def test_async_image_returns_none_before_refresh(
+        self,
+    ) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+
+        result = await entity.async_image()
+        assert result is None
+
+    async def test_refresh_renders_png(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        await entity._async_refresh(None)
+
+        result = await entity.async_image()
+        assert result is not None
+        img = _png_from_bytes(result)
+        assert img.size == (200, 100)
+        assert img.mode == "L"
+
+    async def test_refresh_updates_timestamp(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        assert entity._attr_image_last_updated is None
+        await entity._async_refresh(None)
+        assert entity._attr_image_last_updated is not None
+
+    async def test_refresh_skips_write_when_unchanged(
+        self,
+    ) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        await entity._async_refresh(None)
+        entity.async_write_ha_state.reset_mock()
+
+        await entity._async_refresh(None)
+        entity.async_write_ha_state.assert_not_called()
+
+    async def test_added_to_hass_sets_up_interval(
+        self,
+    ) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        unsub = MagicMock()
+        with patch(
+            "custom_components.eink_dashboard.image.async_track_time_interval",
+            return_value=unsub,
+        ) as mock_track:
+            await entity.async_added_to_hass()
+            mock_track.assert_called_once()
+            args = mock_track.call_args
+            assert args[0][0] is hass
+            assert args[0][2] == timedelta(seconds=DEFAULT_UPDATE_INTERVAL)
+
+    async def test_remove_from_hass_cancels_interval(
+        self,
+    ) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        unsub = MagicMock()
+        with patch(
+            "custom_components.eink_dashboard.image.async_track_time_interval",
+            return_value=unsub,
+        ):
+            await entity.async_added_to_hass()
+
+        await entity.async_will_remove_from_hass()
+        unsub.assert_called_once()
+
+    async def test_set_widgets_affects_render(
+        self,
+    ) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        entity.set_widgets(
+            [
+                {
+                    "type": "text",
+                    "x": 10,
+                    "y": 10,
+                    "text": "Hello",
+                    "font_size": 20,
+                }
+            ]
+        )
+        await entity._async_refresh(None)
+
+        result = await entity.async_image()
+        assert result is not None
+        img = _png_from_bytes(result)
+        has_dark = any(
+            img.getpixel((x, y)) < 128  # type: ignore[operator]
+            for x in range(10, 100)
+            for y in range(10, 40)
+        )
+        assert has_dark
+
+    async def test_build_states_from_hass(self) -> None:
+        hass = _make_hass()
+        state_obj = MagicMock()
+        state_obj.entity_id = "sensor.temp"
+        state_obj.state = "22"
+        state_obj.attributes = {"unit_of_measurement": "°C"}
+        hass.states.async_all.return_value = [state_obj]
+
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+
+        states = entity._build_states()
+        assert "sensor.temp" in states
+        assert states["sensor.temp"]["state"] == "22"
+        assert (
+            states["sensor.temp"]["attributes"]["unit_of_measurement"] == "°C"
+        )
+
+    async def test_custom_update_interval(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry(
+            {"width": 200, "height": 100, "update_interval": 30}
+        )
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        with patch(
+            "custom_components.eink_dashboard.image.async_track_time_interval",
+            return_value=MagicMock(),
+        ) as mock_track:
+            await entity.async_added_to_hass()
+            args = mock_track.call_args
+            assert args[0][2] == timedelta(seconds=30)
+
+    async def test_rotation_applied(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry({"width": 200, "height": 100, "rotation": 90})
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+
+        await entity._async_refresh(None)
+
+        result = await entity.async_image()
+        assert result is not None
+        img = _png_from_bytes(result)
+        assert img.size == (100, 200)
