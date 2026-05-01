@@ -1,25 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.components.image import (  # ty: ignore[unresolved-import]
-    ImageEntity,
-)
-from homeassistant.config_entries import (  # ty: ignore[unresolved-import]
-    ConfigEntry,
-)
-from homeassistant.core import (  # ty: ignore[unresolved-import]
-    HomeAssistant,
-)
-from homeassistant.helpers.event import (  # ty: ignore[unresolved-import]
+from homeassistant.components.image import ImageEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import (
     async_track_time_interval,
 )
-from homeassistant.util import (  # ty: ignore[unresolved-import]
-    dt as dt_util,
-)
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_HEIGHT,
@@ -41,6 +34,7 @@ class EinkDashboardImage(ImageEntity):
         self._entry = entry
         self._widgets: list[dict[str, Any]] = []
         self._rendered: bytes | None = None
+        self._etag: str | None = None
         self._unsub: Callable[[], None] | None = None
         self._refresh_lock = asyncio.Lock()
         self._attr_name = entry.title
@@ -77,6 +71,7 @@ class EinkDashboardImage(ImageEntity):
             )
             if new_bytes != self._rendered:
                 self._rendered = new_bytes
+                self._etag = f'"{hashlib.sha256(new_bytes).hexdigest()}"'
                 self._attr_image_last_updated = dt_util.utcnow()
                 self.async_write_ha_state()
 
@@ -88,6 +83,10 @@ class EinkDashboardImage(ImageEntity):
                 "attributes": dict(state.attributes),
             }
         return result
+
+    @property
+    def etag(self) -> str | None:
+        return self._etag
 
     async def async_image(self) -> bytes | None:
         return self._rendered

@@ -28,3 +28,11 @@ asyncio_mode = "auto"
 exclude = [
     "tests/",
 ]
+
+[[tool.ty.overrides]]
+include = [
+    "custom_components/eink_dashboard/image.py",
+    "custom_components/eink_dashboard/http.py",
+]
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"

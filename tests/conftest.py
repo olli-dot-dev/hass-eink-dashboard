@@ -14,6 +14,7 @@ def _stub_module(name: str) -> ModuleType:
 _HA_MODULES = [
     "homeassistant",
     "homeassistant.components",
+    "homeassistant.components.http",
     "homeassistant.components.image",
     "homeassistant.config_entries",
     "homeassistant.core",
@@ -26,6 +27,16 @@ _HA_MODULES = [
 for _mod_name in _HA_MODULES:
     if _mod_name not in sys.modules:
         sys.modules[_mod_name] = _stub_module(_mod_name)
+
+http_mod = sys.modules["homeassistant.components.http"]
+http_mod.HomeAssistantView = type(  # type: ignore[attr-defined]
+    "HomeAssistantView",
+    (),
+    {
+        "url": None,
+        "requires_auth": True,
+    },
+)
 
 image_mod = sys.modules["homeassistant.components.image"]
 image_mod.ImageEntity = type(  # type: ignore[attr-defined]
