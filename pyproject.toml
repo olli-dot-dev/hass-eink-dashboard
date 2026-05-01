@@ -33,6 +33,7 @@ exclude = [
 include = [
     "custom_components/eink_dashboard/image.py",
     "custom_components/eink_dashboard/http.py",
+    "custom_components/eink_dashboard/store.py",
 ]
 [tool.ty.overrides.rules]
 unresolved-import = "ignore"

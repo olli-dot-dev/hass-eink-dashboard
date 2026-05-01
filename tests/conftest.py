@@ -20,6 +20,7 @@ _HA_MODULES = [
     "homeassistant.core",
     "homeassistant.helpers",
     "homeassistant.helpers.event",
+    "homeassistant.helpers.storage",
     "homeassistant.util",
     "homeassistant.util.dt",
 ]
@@ -57,6 +58,9 @@ core_mod.HomeAssistant = MagicMock  # type: ignore[attr-defined]
 
 event_mod = sys.modules["homeassistant.helpers.event"]
 event_mod.async_track_time_interval = MagicMock()  # type: ignore[attr-defined]
+
+storage_mod = sys.modules["homeassistant.helpers.storage"]
+storage_mod.Store = MagicMock  # type: ignore[attr-defined]
 
 dt_mod = sys.modules["homeassistant.util.dt"]
 dt_mod.utcnow = MagicMock()  # type: ignore[attr-defined]
