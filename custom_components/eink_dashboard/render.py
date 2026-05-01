@@ -328,12 +328,63 @@ def render_sensor_rows(
         y += _SENSOR_ROW_HEIGHT
 
 
+_BATTERY_BAR_WIDTH = 200
+_BATTERY_BAR_HEIGHT = 16
+
+
+def render_battery_bar(
+    draw: ImageDraw.ImageDraw,
+    widget: Widget,
+    config: DisplayConfig,
+) -> None:
+    entity_id = widget.get("entity", "")
+    state = config.get("states", {}).get(entity_id)
+    if state is None:
+        return
+
+    raw = state.get("state", "")
+    try:
+        pct = int(float(raw))
+    except (ValueError, TypeError):
+        return
+    pct = max(0, min(100, pct))
+
+    x = widget.get("x", PADDING)
+    y = widget.get("y", 0)
+    bar_w = widget.get("width", _BATTERY_BAR_WIDTH)
+    bar_h = widget.get("height", _BATTERY_BAR_HEIGHT)
+    color = widget.get("color", COLOR_BLACK)
+
+    draw.rectangle(
+        [x, y, x + bar_w, y + bar_h],
+        outline=COLOR_GRAY,
+        width=1,
+    )
+
+    fill_w = int(bar_w * pct / 100)
+    if fill_w > 0:
+        draw.rectangle(
+            [x + 1, y + 1, x + fill_w - 1, y + bar_h - 1],
+            fill=color,
+        )
+
+    font = _load_font(bar_h)
+    label = f"{pct}%"
+    draw.text(
+        (x + bar_w + 6, y - 1),
+        label,
+        fill=color,
+        font=font,
+    )
+
+
 _RENDERERS: dict[WidgetType, RendererFn] = {
     WidgetType.TEXT: render_text,
     WidgetType.LINE: render_line,
     WidgetType.SEPARATOR: render_separator,
     WidgetType.WEATHER: render_weather,
     WidgetType.SENSOR_ROWS: render_sensor_rows,
+    WidgetType.BATTERY_BAR: render_battery_bar,
 }
 
 

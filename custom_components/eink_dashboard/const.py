@@ -27,3 +27,4 @@ class WidgetType(StrEnum):
     SEPARATOR = "separator"
     WEATHER = "weather"
     SENSOR_ROWS = "sensor_rows"
+    BATTERY_BAR = "battery_bar"

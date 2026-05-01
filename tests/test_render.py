@@ -549,3 +549,116 @@ class TestRenderSensorRows:
             for y in range(0, 300, 20)
         )
         assert all_white
+
+
+MOCK_BATTERY_STATES = {
+    "sensor.kindle_battery": {
+        "state": "75",
+        "attributes": {
+            "unit_of_measurement": "%",
+            "friendly_name": "Kindle Battery",
+        },
+    },
+}
+
+
+class TestRenderBatteryBar:
+    def _config(self, **overrides: object) -> dict[str, object]:
+        base: dict[str, object] = {
+            "width": 400,
+            "height": 100,
+            "states": MOCK_BATTERY_STATES,
+        }
+        base.update(overrides)
+        return base
+
+    def test_battery_bar_draws_fill(self) -> None:
+        widgets = [
+            {
+                "type": "battery_bar",
+                "x": PADDING,
+                "y": 20,
+                "entity": "sensor.kindle_battery",
+            }
+        ]
+        result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_dark_fill = any(
+            _pixel(img, x, y) < 128
+            for x in range(PADDING + 1, PADDING + 100)
+            for y in range(21, 36)
+        )
+        assert has_dark_fill
+
+    def test_battery_bar_missing_entity_is_noop(
+        self,
+    ) -> None:
+        widgets = [
+            {
+                "type": "battery_bar",
+                "x": PADDING,
+                "y": 20,
+                "entity": "sensor.nonexistent",
+            }
+        ]
+        result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        all_white = all(
+            _pixel(img, x, y) == 255
+            for x in range(0, 400, 20)
+            for y in range(0, 100, 20)
+        )
+        assert all_white
+
+    def test_battery_bar_non_numeric_is_noop(
+        self,
+    ) -> None:
+        states = {
+            "sensor.kindle_battery": {
+                "state": "unavailable",
+                "attributes": {},
+            },
+        }
+        widgets = [
+            {
+                "type": "battery_bar",
+                "x": PADDING,
+                "y": 20,
+                "entity": "sensor.kindle_battery",
+            }
+        ]
+        result = render_dashboard(
+            widgets,
+            {"width": 400, "height": 100, "states": states},
+        )
+
+        img = _png_to_image(result)
+        all_white = all(
+            _pixel(img, x, y) == 255
+            for x in range(0, 400, 20)
+            for y in range(0, 100, 20)
+        )
+        assert all_white
+
+    def test_battery_bar_custom_size(self) -> None:
+        widgets = [
+            {
+                "type": "battery_bar",
+                "x": PADDING,
+                "y": 20,
+                "entity": "sensor.kindle_battery",
+                "width": 300,
+                "height": 24,
+            }
+        ]
+        result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_dark_fill = any(
+            _pixel(img, x, y) < 128
+            for x in range(PADDING + 1, PADDING + 220)
+            for y in range(21, 43)
+        )
+        assert has_dark_fill
