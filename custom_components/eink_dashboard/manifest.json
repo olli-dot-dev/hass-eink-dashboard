@@ -1,0 +1,10 @@
+{
+  "domain": "eink_dashboard",
+  "name": "E-Ink Dashboard",
+  "codeowners": [],
+  "config_flow": false,
+  "documentation": "https://github.com/TODO/hass-eink-dashboard",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "0.1.0"
+}
