@@ -2,7 +2,7 @@
 name = "hass-eink-dashboard"
 version = "0.1.0"
 description = "Home Assistant custom component that renders e-ink dashboard images from entity state"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
     "Pillow>=12.0",
