@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
@@ -12,14 +13,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import (
     async_track_time_interval,
 )
+from homeassistant.helpers.template import Template, TemplateError
 from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_HEIGHT,
     DEFAULT_UPDATE_INTERVAL,
     DEFAULT_WIDTH,
+    WidgetType,
 )
 from .render import render_dashboard
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class EinkDashboardImage(ImageEntity):
@@ -58,6 +63,25 @@ class EinkDashboardImage(ImageEntity):
     def set_widgets(self, widgets: list[dict[str, Any]]) -> None:
         self._widgets = widgets
 
+    def _resolve_templates(  # must be called from the event loop
+        self, widgets: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        resolved = []
+        for widget in widgets:
+            if widget.get("type") == WidgetType.TEXT and "text" in widget:
+                tpl = Template(widget["text"], self.hass)
+                if not tpl.is_static:
+                    try:
+                        rendered = tpl.async_render(parse_result=False)
+                    except TemplateError as err:
+                        _LOGGER.warning(
+                            "Failed to render template %r: %s", widget["text"], err
+                        )
+                        rendered = widget["text"]
+                    widget = {**widget, "text": str(rendered)}
+            resolved.append(widget)
+        return resolved
+
     async def _async_refresh(self, _now: Any) -> None:
         async with self._refresh_lock:
             config = {
@@ -66,8 +90,9 @@ class EinkDashboardImage(ImageEntity):
                 "rotation": self._entry.options.get("rotation", 0),
                 "states": self._build_states(),
             }
+            widgets = self._resolve_templates(self._widgets)
             new_bytes = await self.hass.async_add_executor_job(
-                render_dashboard, self._widgets, config
+                render_dashboard, widgets, config
             )
             if new_bytes != self._rendered:
                 self._rendered = new_bytes

@@ -5,6 +5,7 @@ from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.helpers.template import TemplateError
 from PIL import Image
 
 from custom_components.eink_dashboard.const import DEFAULT_UPDATE_INTERVAL
@@ -209,3 +210,116 @@ class TestEinkDashboardImage:
         assert result is not None
         img = _png_from_bytes(result)
         assert img.size == (100, 200)
+
+    async def test_template_in_text_widget_is_resolved(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+        entity.set_widgets(
+            [
+                {
+                    "type": "text",
+                    "x": 10,
+                    "y": 10,
+                    "text": "{{ states('sensor.temp') }}",
+                    "font_size": 20,
+                }
+            ]
+        )
+
+        with patch(
+            "custom_components.eink_dashboard.image.Template"
+        ) as MockTemplate:
+            instance = MockTemplate.return_value
+            instance.is_static = False
+            instance.async_render.return_value = "22"
+            await entity._async_refresh(None)
+            MockTemplate.assert_called_once_with(
+                "{{ states('sensor.temp') }}", hass
+            )
+            instance.async_render.assert_called_once_with(parse_result=False)
+
+        result = await entity.async_image()
+        assert result is not None
+        img = _png_from_bytes(result)
+        has_dark = any(
+            img.getpixel((x, y)) < 128  # type: ignore[operator]
+            for x in range(10, 60)
+            for y in range(10, 40)
+        )
+        assert has_dark
+
+    async def test_static_text_skips_template_render(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+        entity.set_widgets(
+            [
+                {
+                    "type": "text",
+                    "x": 10,
+                    "y": 10,
+                    "text": "Hello",
+                    "font_size": 20,
+                }
+            ]
+        )
+
+        with patch(
+            "custom_components.eink_dashboard.image.Template"
+        ) as MockTemplate:
+            instance = MockTemplate.return_value
+            instance.is_static = True
+            await entity._async_refresh(None)
+            instance.async_render.assert_not_called()
+            MockTemplate.assert_called_once_with("Hello", hass)
+
+    async def test_template_error_falls_back_to_raw(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+        entity.set_widgets(
+            [
+                {
+                    "type": "text",
+                    "x": 10,
+                    "y": 10,
+                    "text": "{{ bad }}",
+                    "font_size": 20,
+                }
+            ]
+        )
+
+        with patch(
+            "custom_components.eink_dashboard.image.Template"
+        ) as MockTemplate:
+            instance = MockTemplate.return_value
+            instance.is_static = False
+            instance.async_render.side_effect = TemplateError("undefined")
+            await entity._async_refresh(None)
+
+        result = await entity.async_image()
+        assert result is not None
+        img = _png_from_bytes(result)
+        has_dark = any(
+            img.getpixel((x, y)) < 128  # type: ignore[operator]
+            for x in range(10, 100)
+            for y in range(10, 40)
+        )
+        assert has_dark
+
+    async def test_non_text_widget_unaffected_by_templates(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        entity = EinkDashboardImage(hass, entry)
+        entity.async_write_ha_state = MagicMock()
+        entity.set_widgets([{"type": "separator", "y": 50}])
+
+        with patch(
+            "custom_components.eink_dashboard.image.Template"
+        ) as MockTemplate:
+            await entity._async_refresh(None)
+            MockTemplate.assert_not_called()

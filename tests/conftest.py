@@ -21,6 +21,7 @@ _HA_MODULES = [
     "homeassistant.helpers",
     "homeassistant.helpers.event",
     "homeassistant.helpers.storage",
+    "homeassistant.helpers.template",
     "homeassistant.util",
     "homeassistant.util.dt",
 ]
@@ -64,3 +65,29 @@ storage_mod.Store = MagicMock  # type: ignore[attr-defined]
 
 dt_mod = sys.modules["homeassistant.util.dt"]
 dt_mod.utcnow = MagicMock()  # type: ignore[attr-defined]
+
+template_mod = sys.modules["homeassistant.helpers.template"]
+
+
+class _TemplateError(Exception):
+    pass
+
+
+template_mod.TemplateError = _TemplateError  # type: ignore[attr-defined]
+
+
+class _StubTemplate:
+    def __init__(self, template: str, hass: object = None) -> None:
+        self.template = template
+        self.hass = hass
+        self.is_static = not (
+            "{{" in template or "{%" in template or "{#" in template
+        )
+
+    def async_render(
+        self, parse_result: bool = False, **kwargs: object
+    ) -> str:
+        return self.template
+
+
+template_mod.Template = _StubTemplate  # type: ignore[attr-defined]
