@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "E-Ink Dashboard",
+        "data": {
+          "name": "Name",
+          "width": "Width (px)",
+          "height": "Height (px)",
+          "update_interval": "Update interval (seconds)"
+        }
+      }
+    },
+    "error": {},
+    "abort": {}
+  }
+}

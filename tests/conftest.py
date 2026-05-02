@@ -19,6 +19,7 @@ _HA_MODULES = [
     "homeassistant.config_entries",
     "homeassistant.core",
     "homeassistant.helpers",
+    "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.event",
     "homeassistant.helpers.storage",
     "homeassistant.helpers.template",
@@ -53,6 +54,45 @@ image_mod.ImageEntity = type(  # type: ignore[attr-defined]
 
 config_entries = sys.modules["homeassistant.config_entries"]
 config_entries.ConfigEntry = MagicMock  # type: ignore[attr-defined]
+config_entries.ConfigFlowResult = dict  # type: ignore[attr-defined]
+
+
+class _StubConfigFlow:
+    def __init_subclass__(
+        cls, *, domain: str | None = None, **kw: object
+    ) -> None:
+        super().__init_subclass__(**kw)
+
+    def async_show_form(
+        self,
+        *,
+        step_id: str | None = None,
+        data_schema: object = None,
+        errors: dict | None = None,
+    ) -> dict:
+        return {
+            "type": "form",
+            "step_id": step_id,
+            "data_schema": data_schema,
+            "errors": errors,
+        }
+
+    def async_create_entry(
+        self,
+        *,
+        title: str,
+        data: object,
+        options: object = None,
+    ) -> dict:
+        return {
+            "type": "create_entry",
+            "title": title,
+            "data": data,
+            "options": options,
+        }
+
+
+config_entries.ConfigFlow = _StubConfigFlow  # type: ignore[attr-defined]
 
 core_mod = sys.modules["homeassistant.core"]
 core_mod.HomeAssistant = MagicMock  # type: ignore[attr-defined]

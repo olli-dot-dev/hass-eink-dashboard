@@ -75,7 +75,9 @@ class EinkDashboardImage(ImageEntity):
                         rendered = tpl.async_render(parse_result=False)
                     except TemplateError as err:
                         _LOGGER.warning(
-                            "Failed to render template %r: %s", widget["text"], err
+                            "Failed to render template %r: %s",
+                            widget["text"],
+                            err,
                         )
                         rendered = widget["text"]
                     widget = {**widget, "text": str(rendered)}
