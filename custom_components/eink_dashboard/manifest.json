@@ -3,8 +3,8 @@
   "name": "E-Ink Dashboard",
   "codeowners": [],
   "config_flow": false,
-  "documentation": "https://github.com/TODO/hass-eink-dashboard",
-  "iot_class": "local_push",
+  "documentation": "https://github.com/cryptomilk/hass-eink-dashboard",
+  "iot_class": "local_polling",
   "requirements": [],
   "version": "0.1.0"
 }
