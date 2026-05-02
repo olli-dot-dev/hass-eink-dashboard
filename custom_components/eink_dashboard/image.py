@@ -20,11 +20,24 @@ from .const import (
     DEFAULT_HEIGHT,
     DEFAULT_UPDATE_INTERVAL,
     DEFAULT_WIDTH,
+    DOMAIN,
     WidgetType,
 )
 from .render import render_dashboard
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: Any,
+) -> None:
+    entity = EinkDashboardImage(hass, entry)
+    widgets = hass.data[DOMAIN][entry.entry_id]["widgets"]
+    entity.set_widgets(widgets)
+    hass.data[DOMAIN][entry.entry_id]["entity"] = entity
+    async_add_entities([entity])
 
 
 class EinkDashboardImage(ImageEntity):

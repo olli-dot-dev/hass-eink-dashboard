@@ -8,9 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.helpers.template import TemplateError
 from PIL import Image
 
-from custom_components.eink_dashboard.const import DEFAULT_UPDATE_INTERVAL
+from custom_components.eink_dashboard.const import (
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+)
 from custom_components.eink_dashboard.image import (
     EinkDashboardImage,
+    async_setup_entry,
 )
 
 
@@ -323,3 +327,21 @@ class TestEinkDashboardImage:
         ) as MockTemplate:
             await entity._async_refresh(None)
             MockTemplate.assert_not_called()
+
+
+class TestImagePlatformSetup:
+    async def test_async_setup_entry(self) -> None:
+        hass = _make_hass()
+        entry = _make_entry()
+        widgets = [{"type": "separator", "y": 50}]
+        hass.data = {DOMAIN: {entry.entry_id: {"widgets": widgets}}}
+
+        async_add_entities = MagicMock()
+        await async_setup_entry(hass, entry, async_add_entities)
+
+        async_add_entities.assert_called_once()
+        entities = async_add_entities.call_args[0][0]
+        assert len(entities) == 1
+        assert isinstance(entities[0], EinkDashboardImage)
+        assert hass.data[DOMAIN][entry.entry_id]["entity"] is entities[0]
+        assert entities[0]._widgets == widgets
