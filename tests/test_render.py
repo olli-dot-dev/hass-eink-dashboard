@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import datetime as dt
 import io
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -8,6 +10,8 @@ from custom_components.eink_dashboard.const import (
     PADDING,
 )
 from custom_components.eink_dashboard.render import (
+    _format_relative_date,
+    _parse_days_until,
     render_dashboard,
 )
 
@@ -870,3 +874,345 @@ class TestRenderStatusIcons:
             for y in range(36, 80)
         )
         assert has_second_row
+
+
+MOCK_WASTE_SCHEDULE_STATES = {
+    "sensor.restmull": {
+        "state": "2026-05-03",
+        "attributes": {"friendly_name": "Restmull"},
+    },
+    "sensor.gelbe_tonne": {
+        "state": "2026-05-04",
+        "attributes": {"friendly_name": "Gelbe Tonne"},
+    },
+    "sensor.papier": {
+        "state": "2026-05-05",
+        "attributes": {"friendly_name": "Papier"},
+    },
+}
+
+_TODAY = dt.date(2026, 5, 2)
+_PATCH_NOW = "custom_components.eink_dashboard.render.date"
+
+
+class TestWasteDateHelpers:
+    def test_parse_iso_date(self) -> None:
+        today = dt.date(2026, 5, 2)
+        assert _parse_days_until("2026-05-02", today) == 0
+        assert _parse_days_until("2026-05-03", today) == 1
+        assert _parse_days_until("2026-05-09", today) == 7
+
+    def test_parse_integer_string(self) -> None:
+        today = dt.date(2026, 5, 2)
+        assert _parse_days_until("0", today) == 0
+        assert _parse_days_until("3", today) == 3
+
+    def test_parse_invalid_returns_none(self) -> None:
+        today = dt.date(2026, 5, 2)
+        assert _parse_days_until("unavailable", today) is None
+        assert _parse_days_until("unknown", today) is None
+        assert _parse_days_until("", today) is None
+
+    def test_format_today(self) -> None:
+        assert _format_relative_date(0, "2026-05-02") == "today"
+
+    def test_format_tomorrow(self) -> None:
+        assert _format_relative_date(1, "2026-05-03") == "tomorrow"
+
+    def test_format_in_n_days(self) -> None:
+        assert _format_relative_date(3, "2026-05-05") == "in 3 days"
+
+    def test_format_none_returns_raw(self) -> None:
+        assert _format_relative_date(None, "unavailable") == "unavailable"
+
+    def test_format_negative_returns_raw(self) -> None:
+        assert _format_relative_date(-1, "2026-05-01") == "2026-05-01"
+
+
+class TestRenderWasteSchedule:
+    def _config(self, **overrides: object) -> dict[str, object]:
+        base: dict[str, object] = {
+            "width": 500,
+            "height": 300,
+            "states": MOCK_WASTE_SCHEDULE_STATES,
+        }
+        base.update(overrides)
+        return base
+
+    def test_waste_schedule_draws_entities(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": [
+                    "sensor.restmull",
+                    "sensor.gelbe_tonne",
+                ],
+            }
+        ]
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_row1 = any(
+            _pixel(img, x, y) < 200
+            for x in range(PADDING, 300)
+            for y in range(10, 38)
+        )
+        assert has_row1
+        has_row2 = any(
+            _pixel(img, x, y) < 200
+            for x in range(PADDING, 300)
+            for y in range(38, 66)
+        )
+        assert has_row2
+
+    def test_waste_schedule_with_title(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "title": "Waste Collection",
+                "entities": ["sensor.restmull"],
+            }
+        ]
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_title = any(
+            _pixel(img, x, y) < 128
+            for x in range(PADDING, 250)
+            for y in range(10, 40)
+        )
+        assert has_title
+        has_entity = any(
+            _pixel(img, x, y) < 200
+            for x in range(PADDING, 300)
+            for y in range(42, 70)
+        )
+        assert has_entity
+
+    def test_waste_schedule_missing_entity_skipped(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": [
+                    "sensor.nonexistent",
+                    "sensor.restmull",
+                ],
+            }
+        ]
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_content = any(
+            _pixel(img, x, y) < 200
+            for x in range(PADDING, 300)
+            for y in range(10, 38)
+        )
+        assert has_content
+
+    def test_waste_schedule_empty_entities_is_noop(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": [],
+            }
+        ]
+        result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        all_white = all(
+            _pixel(img, x, y) == 255
+            for x in range(0, 500, 20)
+            for y in range(0, 300, 20)
+        )
+        assert all_white
+
+    def test_waste_schedule_today_fills_circle(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": ["sensor.restmull"],
+            }
+        ]
+        # restmull state is 2026-05-03; today = 2026-05-03 → days=0
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = dt.date(2026, 5, 3)
+            result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_black = any(
+            _pixel(img, x, y) < 64
+            for x in range(PADDING, PADDING + 11)
+            for y in range(16, 27)
+        )
+        assert has_black
+
+    def test_waste_schedule_tomorrow_fills_circle(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": ["sensor.restmull"],
+            }
+        ]
+        # restmull state is 2026-05-03; today = 2026-05-02 → days=1
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_black = any(
+            _pixel(img, x, y) < 64
+            for x in range(PADDING, PADDING + 11)
+            for y in range(16, 27)
+        )
+        assert has_black
+
+    def test_waste_schedule_future_draws_outline(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": ["sensor.gelbe_tonne"],
+            }
+        ]
+        # gelbe_tonne state is 2026-05-04; today = 2026-05-02 → days=2
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        # Interior of circle should NOT be solid black
+        interior_black = all(
+            _pixel(img, x, y) < 64
+            for x in range(PADDING + 2, PADDING + 9)
+            for y in range(18, 25)
+        )
+        assert not interior_black
+        # But the circle boundary should have some non-white pixels
+        has_outline = any(
+            _pixel(img, x, y) < 240
+            for x in range(PADDING, PADDING + 11)
+            for y in range(16, 27)
+        )
+        assert has_outline
+
+    def test_waste_schedule_date_right_aligned(self) -> None:
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": ["sensor.restmull"],
+            }
+        ]
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config())
+
+        img = _png_to_image(result)
+        has_right_text = any(
+            _pixel(img, x, y) < 200
+            for x in range(380, 476)
+            for y in range(10, 38)
+        )
+        assert has_right_text
+
+    def test_waste_schedule_integer_state(self) -> None:
+        states = {
+            "sensor.restmull": {
+                "state": "3",
+                "attributes": {"friendly_name": "Restmull"},
+            }
+        }
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": ["sensor.restmull"],
+            }
+        ]
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config(states=states))
+
+        img = _png_to_image(result)
+        has_content = any(
+            _pixel(img, x, y) < 200
+            for x in range(PADDING, 300)
+            for y in range(10, 38)
+        )
+        assert has_content
+
+    def test_waste_schedule_past_date_skipped(self) -> None:
+        states = {
+            "sensor.restmull": {
+                "state": "2026-05-01",
+                "attributes": {"friendly_name": "Restmull"},
+            }
+        }
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": ["sensor.restmull"],
+            }
+        ]
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config(states=states))
+
+        img = _png_to_image(result)
+        all_white = all(
+            _pixel(img, x, y) == 255
+            for x in range(0, 500, 20)
+            for y in range(0, 300, 20)
+        )
+        assert all_white
+
+    def test_waste_schedule_beyond_3_days_skipped(self) -> None:
+        states = {
+            "sensor.restmull": {
+                "state": "2026-05-06",
+                "attributes": {"friendly_name": "Restmull"},
+            }
+        }
+        widgets = [
+            {
+                "type": "waste_schedule",
+                "x": PADDING,
+                "y": 10,
+                "entities": ["sensor.restmull"],
+            }
+        ]
+        # 2026-05-06 is 4 days from today (2026-05-02) → filtered out
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            result = render_dashboard(widgets, self._config(states=states))
+
+        img = _png_to_image(result)
+        all_white = all(
+            _pixel(img, x, y) == 255
+            for x in range(0, 500, 20)
+            for y in range(0, 300, 20)
+        )
+        assert all_white

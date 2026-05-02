@@ -4,7 +4,7 @@ import functools
 import io
 import math
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -450,6 +450,94 @@ def render_status_icons(
         cur_x += item_w
 
 
+_WASTE_ROW_HEIGHT = 28
+_WASTE_ICON_SIZE = 10
+
+
+def _parse_days_until(raw: str, today: date) -> int | None:
+    try:
+        target = date.fromisoformat(raw)
+        return (target - today).days
+    except ValueError:
+        pass
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def _format_relative_date(days: int | None, raw: str) -> str:
+    if days is None or days < 0:
+        return raw
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "tomorrow"
+    return f"in {days} days"
+
+
+def render_waste_schedule(
+    draw: ImageDraw.ImageDraw,
+    widget: Widget,
+    config: DisplayConfig,
+) -> None:
+    x = widget.get("x", PADDING)
+    y = widget.get("y", 0)
+    title = widget.get("title", "")
+    entity_ids: list[str] = widget.get("entities", [])
+    states = config.get("states", {})
+    width = config["width"]
+
+    font_md = _load_font(22)
+    font_sm = _load_font(18)
+
+    if title:
+        draw.text((x, y), title, fill=COLOR_BLACK, font=font_md)
+        y += 32
+
+    today = date.today()
+    for entity_id in entity_ids:
+        state = states.get(entity_id)
+        if state is None:
+            continue
+        attrs = state.get("attributes", {})
+        label = attrs.get("friendly_name", entity_id)
+        raw = state.get("state", "")
+
+        days = _parse_days_until(raw, today)
+        if days is not None and (days < 0 or days > 3):
+            continue
+        s = _WASTE_ICON_SIZE
+        if days is not None and days <= 1:
+            draw.ellipse(
+                [x, y + 6, x + s, y + 6 + s],
+                fill=COLOR_BLACK,
+            )
+        else:
+            draw.ellipse(
+                [x, y + 6, x + s, y + 6 + s],
+                outline=COLOR_GRAY,
+            )
+
+        draw.text(
+            (x + s + 8, y),
+            label,
+            fill=COLOR_BLACK,
+            font=font_sm,
+        )
+
+        date_str = _format_relative_date(days, raw)
+        bbox = draw.textbbox((0, 0), date_str, font=font_sm)
+        text_w = bbox[2] - bbox[0]
+        draw.text(
+            (width - PADDING - text_w, y),
+            date_str,
+            fill=COLOR_GRAY,
+            font=font_sm,
+        )
+        y += _WASTE_ROW_HEIGHT
+
+
 _RENDERERS: dict[WidgetType, RendererFn] = {
     WidgetType.TEXT: render_text,
     WidgetType.LINE: render_line,
@@ -458,6 +546,7 @@ _RENDERERS: dict[WidgetType, RendererFn] = {
     WidgetType.SENSOR_ROWS: render_sensor_rows,
     WidgetType.BATTERY_BAR: render_battery_bar,
     WidgetType.STATUS_ICONS: render_status_icons,
+    WidgetType.WASTE_SCHEDULE: render_waste_schedule,
 }
 
 
